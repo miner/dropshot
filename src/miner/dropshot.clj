@@ -19,13 +19,13 @@
     (e/go driver signup-url)
     (e/wait-visible driver {:tag :input :type :submit})
     (when (e/has-text? driver "02/15/2018 (Thu.)")
-      (let [tr-span (e/query driver {:xpath ".//span[contains(text(),'02/15/2018 (Thu.)')]"})]
-        ;; dive into the tr containing the tr
-        (e/get-element-text-el driver tr-span)
+      (let [bingo (e/query driver {:xpath ".//tr[td[span[contains(text(),'02/15/2018 (Thu.)')]]]"})]
+
+        (e/get-element-text-el driver bingo)
         ))))
         
 
-
+;; (e/query driver {:xpath ".//span[contains(text(),'02/15/2018 (Thu.)')]"})]
 ;;    (e/query-all driver {:tag :input :type :checkbox})))
 
 
