@@ -1,14 +1,10 @@
 # dropshot
 
-A Clojure library WITH YOUR DESCRIPTION.
-
-## Usage
-
-FIXME
+Personal project.  Not for public consumption.
 
 ## License
 
-Copyright © 2018 YOUR NAME
+Copyright © 2018 Steve Miner
+All rights reserved.
 
-Distributed under the Eclipse Public License, same as Clojure.
 
