@@ -1,6 +1,7 @@
 (ns miner.dropshot
   (:require [clojure.string :as str]
             [clojure.walk :as w]
+            [clojure.set :as set]
             [etaoin.api :as e]
             [etaoin.keys :as k]))
 
@@ -163,9 +164,9 @@
             :courts [4 5]}]}
   )
 
-(defn patch-buttons [driver available]
-  (let [b (volatile! 0)
-        vbid (signup-button-ids driver)]
+;; vbid is a vector of signup-button-ids
+(defn patch-buttons [driver vbid available]
+  (let [b (volatile! 0)]
     (w/postwalk (fn [form]
                   (if (and (map? form) (contains? form :courts))
                     (let [courts (:courts form)
@@ -186,38 +187,114 @@
 ;; There are some funny transformations done to convert from HTML order of elements into
 ;; something that's easier to find the right button.
 
-;; SEM BUG:  should drop day/time with no courts
+;; SEM:  could drop day/time with no courts, but that's not really necessary.  And it was
+;; hard when I tried.
 
+;; Just for testing.  Real code can use the p-a-courts version
 (defn parse-available [driver]
   (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
         parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
-    (available-by-date (patch-buttons driver (map make-day parts)))))
+    (available-by-date (patch-buttons driver (signup-button-ids driver) (map make-day parts)))))
 
-;; UNFINISHED
-(defn parse-available-courts [driver]
+
+(defn parse-available-courts [driver sign-up-ids]
   (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
         parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
-    (available-by-date (patch-buttons driver (map make-day parts)))))
+    (available-by-date (patch-buttons driver sign-up-ids (map make-day parts)))))
 
-(def sample-request
+
+
+
+(def sample-input
   {:first "Steve" :last "Miner" :email "steve@indigopickleball.com"
    :requests  [["02/05/2018" 1000 "Aaa Bbb Ccc Ddd"]
                ["02/06/2018" 1300 "Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]]
    })
 
-#_ (defn dropshot [url request-map]
-  (e/with-chrome {} driver
-    (let [reqs (:requests request-map)]
+;; :courts to be added when assigned
+;; TODO: partial assignments will have to split players accordingly and report failure.
+(def sample-expanded-requests
+  [{:date "02/05/2018" :start 1000 :players ["Aaa Bbb Ccc Ddd"] :courts [4]}
+   {:date "02/06/2018" :start 1300 :players ["Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]
+    :courts [1 2]}]
+   )
 
-      (e/go driver url)
-      (let [sign-up-ids (signup-button-ids driver)]
-        (if (empty? sign-up-ids)
-          ;; nothing there loop
-          nil
-          (let [available (parse-available-courts driver sign-up-ids)]
 
-))))))
+(defn preferred-courts [courts ^long cnt]
+  (if (<= (count courts) cnt)
+    courts
+    (let [avail-set (set courts)]
+      (or (case cnt
+            0 []
+            1 (vector (first (filter avail-set [6 4 3 5 2 1])))
+            2 (first (filter #(set/subset? % avail-set) [#{6 5} #{4 5} #{6 4} #{4 3} #{6 1}]))
+            3 (first (filter #(set/subset? % avail-set) [#{6 5 4} #{5 4 3} #{4 3 2}]))
+            4 (first (filter #(set/subset? % avail-set) [#{6 5 4 3} #{6 5 4 1} #{6 5 1 2}
+                                                         #{4 5 3 2}]))
+            5 (when (set/subset? #{6 5 4 3 2} avail-set) [6 5 4 3 2])
+            nil)
+          (take cnt (rseq courts))))))
+    
+;; SEM FIXME:  we're assuming no overlap in requests.  We might be assigning the same
+;; court twice if the requests overlap!!!
 
+;; For now, we only assign
+(defn assign-courts [available req]
+  (if (:courts req)
+    req
+    (let [available-courts (get-in available [(:date req) (:start req) :courts])
+          cnt (count (:players req))]
+      (if (empty? available-courts)
+        req
+        (assoc req :courts (preferred-courts available-courts cnt))))))
+
+        
+
+
+(defn expand-request [input-request]
+  (let [[date start & players] input-request]
+    {:date date :start start :players players}))
+     
+;; emergency
+(def ^:dynamic *continue* true)
+
+
+;; SEM TODO: handle split assignments where some courts were available but not others
+
+(defn dropshot [url request-input timeout-hrs]
+  (let [timeout (+ (System/currentTimeMillis) (* 60 60 1000 timeout-hrs))]
+    (e/with-chrome {} driver
+      (loop [reqs (mapv expand-request (:requests request-input))]
+        (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
+          (e/go driver url)
+          (e/wait-visible driver {:tag :input :type :submit})        
+          (let [sign-up-ids (signup-button-ids driver)]
+            (if (empty? sign-up-ids)
+              ;; wait if nothing available
+              (do (Thread/sleep 150000)
+                  (recur reqs))
+              (let [available (parse-available-courts driver sign-up-ids)
+                    assignments (mapv (fn [r] (assign-courts available r)) reqs)]
+                (doseq [r assignments]
+                  (doseq [court (:courts r)]
+                    ;; need to double check if court was taken???
+                    ;; can't tell until submission
+                    (click-court driver available (:date r) (:start r) court)))
+                ;; ready, submit
+                (click-submit-and-sign-up driver)
+
+                (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r))) assignments)]
+                  (e/wait-visible driver {:name "btnSignUp"})
+                  (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                    (doseq [[el pls] (map vector comm-els players)]
+                      (e/fill-el driver el pls))))
+                (e/fill driver {:id :firstname} (:first request-input))
+                (e/fill driver {:id :lastname} (:last request-input))
+                (e/fill driver {:id :email} (:email request-input))
+                (e/click driver {:name "btnSignUp"})
+                (recur (remove :courts assignments))))))))))
+
+                    
 
 ;; NOT REALLY NEEDED
 (defn extract-date [txt]
