@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [clojure.walk :as w]
             [clojure.set :as set]
+            [clojure.pprint :refer [pprint]]
             [etaoin.api :as e]
             [etaoin.keys :as k]))
 
@@ -10,38 +11,39 @@
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
     
-;; (def driver (e/chrome))
 
-;;; UNTESTED
-(defn qtext
-  ([txt] (qtext :* txt))
-  ([tag txt]
-   {:xpath (str ".//" (name tag) "[contains(text(),'" txt "']")}))
+(def sample-input
+  {:first "Smash" :last "Banger" :email "miner@velisco.com"
+   :requests  [["02/05/2018" 1000 "Aaa Bbb Ccc Ddd"]
+               ["02/06/2018" 1300 "Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]]
+   })
 
-(defn smoke []
-  (e/with-chrome {} driver
-    (e/go driver signup-url)
-    (e/wait-visible driver {:tag :input :type :submit})
-    (when (e/has-text? driver "02/15/2018 (Thu.)")
-      (let [q {:xpath ".//tr[td[span[contains(text(),'02/15/2018 (Thu.)')]]]"}
+;; :courts to be added when assigned
+;; TODO: partial assignments will have to split players accordingly and report failure.
+(def sample-expanded-requests
+  [{:date "02/05/2018" :start 1000 :players ["Aaa Bbb Ccc Ddd"] :courts [4]}
+   {:date "02/06/2018" :start 1300 :players ["Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]
+    :courts [1 2]}]
+   )
 
-            rows (if-let [rowspan (e/get-element-attr driver q :rowspan)]
-                     (Long/parseLong rowspan)
-                     1)
-            
-            tr (e/query driver q)
-            ;; tr2 (e/query driver {:xpath (str "following-sibling:://" tr)})
 
-            tds (e/query-all driver
-                         {:xpath ".//tr[td[span[contains(text(),'02/15/2018 (Thu.)')]]]/td"})]
 
-        (println "Rows = " rows)
+;; nil if not available
+(defn button-id [available date start court]
+  (get-in available [date start :buttons court]))
 
-        ;;        (println (e/get-element-text-el driver tr))
-        ;; (mapv #(e/get-element-text-el driver %) [tr tr2])
-        (e/get-element-text-el driver tr)
-        ))))
+  
+(defn click-court [driver available date start court]
+  (when-let [bid (button-id available date start court)]
+    (e/click-visible driver {:id bid})
+    (let [checked (e/get-element-attr driver {:id bid} :checked)]
+      (cond (= checked "true") true
+            (= checked "false") false
+            :else false))))
 
+(defn click-submit-and-sign-up [driver]
+  (when (e/click-visible driver {:tag :input :value "Submit and Sign Up"})
+    true))
 
 (defn signup-button-ids [driver]
   (mapv #(e/get-element-attr-el driver % :id)
@@ -192,32 +194,22 @@
 
 ;; Just for testing.  Real code can use the p-a-courts version
 (defn parse-available [driver]
-  (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
+  (let [lines (str/split-lines (e/get-element-text driver {:tag :table :class "SUGtableouter"}))
         parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
     (available-by-date (patch-buttons driver (signup-button-ids driver) (map make-day parts)))))
 
 
+;; used to get {:tag :td} but sometimes the ad goes first and screws that up.  Looks like I
+;; can just get the table text
+
 (defn parse-available-courts [driver sign-up-ids]
-  (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
+  (e/wait-visible driver {:tag :td})
+  (let [lines (str/split-lines (e/get-element-text driver {:tag :table :class "SUGtableouter"}))
         parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
     (available-by-date (patch-buttons driver sign-up-ids (map make-day parts)))))
 
 
 
-
-(def sample-input
-  {:first "Steve" :last "Miner" :email "steve@indigopickleball.com"
-   :requests  [["02/05/2018" 1000 "Aaa Bbb Ccc Ddd"]
-               ["02/06/2018" 1300 "Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]]
-   })
-
-;; :courts to be added when assigned
-;; TODO: partial assignments will have to split players accordingly and report failure.
-(def sample-expanded-requests
-  [{:date "02/05/2018" :start 1000 :players ["Aaa Bbb Ccc Ddd"] :courts [4]}
-   {:date "02/06/2018" :start 1300 :players ["Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]
-    :courts [1 2]}]
-   )
 
 
 (defn preferred-courts [courts ^long cnt]
@@ -267,32 +259,61 @@
       (loop [reqs (mapv expand-request (:requests request-input))]
         (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
           (e/go driver url)
-          (e/wait-visible driver {:tag :input :type :submit})        
+          (e/wait-visible driver {:tag :input :type :submit})
+          (Thread/sleep 500)
           (let [sign-up-ids (signup-button-ids driver)]
             (if (empty? sign-up-ids)
               ;; wait if nothing available
-              (do (Thread/sleep 150000)
+              (do (println (str (java.time.LocalDateTime/now)))
+                  (println "Waiting empty sign ups")
+                  (flush)
+                  (Thread/sleep 15000)
                   (recur reqs))
               (let [available (parse-available-courts driver sign-up-ids)
                     assignments (mapv (fn [r] (assign-courts available r)) reqs)]
-                (doseq [r assignments]
-                  (doseq [court (:courts r)]
-                    ;; need to double check if court was taken???
-                    ;; can't tell until submission
-                    (click-court driver available (:date r) (:start r) court)))
-                ;; ready, submit
-                (click-submit-and-sign-up driver)
+                (println "** available **")
+                (pprint available)
+                (println)
+                (println "assignments")
+                (pprint assignments)
+                (println)
+                (flush)
+                (when (empty? available)
+                  (println "Stopping for empty available")
+                  (println "RETURN to continue")
+                  (read-line))
+                (if-not (some :courts assignments)
+                  (do (println (str (java.time.LocalDateTime/now)))
+                      (println "Waiting no assignments")
+                      (flush)
+                      (Thread/sleep 15000)
+                      (recur reqs))
+                  (do
+                    (doseq [r assignments]
+                      (doseq [court (:courts r)]
+                        ;; need to double check if court was taken???
+                        ;; can't tell until submission
+                        (click-court driver available (:date r) (:start r) court)))
+                    (Thread/sleep 2000)
+                    ;; ready, submit
+                    (click-submit-and-sign-up driver)
 
-                (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r))) assignments)]
-                  (e/wait-visible driver {:name "btnSignUp"})
-                  (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-                    (doseq [[el pls] (map vector comm-els players)]
-                      (e/fill-el driver el pls))))
-                (e/fill driver {:id :firstname} (:first request-input))
-                (e/fill driver {:id :lastname} (:last request-input))
-                (e/fill driver {:id :email} (:email request-input))
-                (e/click driver {:name "btnSignUp"})
-                (recur (remove :courts assignments))))))))))
+                    (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
+                                          assignments)]
+                      (e/wait-visible driver {:name "btnSignUp"})
+                      (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                        (doseq [[el pls] (map vector comm-els players)]
+                          (e/fill-el driver el pls))))
+                    (e/fill driver {:id :firstname} (:first request-input))
+                    (e/fill driver {:id :lastname} (:last request-input))
+                    (e/fill driver {:id :email} (:email request-input))
+                    (Thread/sleep 2000)
+                    (e/click driver {:name "btnSignUp"})
+                    (Thread/sleep 2000)
+                    (recur (remove :courts assignments))))))))))))
+
+(defn smoke []
+  (dropshot signup-url sample-input 1))
 
                     
 
@@ -340,59 +361,5 @@
    :date "02/06/2018"}}}
 
 )
-
-;; nil if not available
-(defn button-id [available date start court]
-  (get-in available [date start :buttons court]))
-
-  
-(defn click-court [driver available date start court]
-  (when-let [bid (button-id available date start court)]
-    (e/click-visible driver {:id bid})
-    (let [checked (e/get-element-attr driver {:id bid} :checked)]
-      (cond (= checked "true") true
-            (= checked "false") false
-            :else false))))
-
-(defn click-submit-and-sign-up [driver]
-  (when (e/click-visible driver {:tag :input :value "Submit and Sign Up"})
-    true))
-
   
       
-      
-;; first page is the court available
-;; then submit and go to sign up page
-;;
-;; comment fields for players (in order of date/time/court slots) from previous checkboxes,
-;; no useful ideas, but order seems to work
-;;
-;;   (e/query-all ddd {:tag :input :data-ng-model "i.mycomment"})
-;; (e/fill-el ddd EL "my text for players")
-;;
-;; other three input fiels by id: firstname, lastname,  email
-
-
-;; click on name = btnSignUp
-
-(defn smoke-sign [driver]
-  (doseq [el (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-    (e/fill-el driver el (str "aaa bbb ccc" (last el))))
-  (e/fill driver {:id :firstname} "Steve")
-  (e/fill driver {:id :lastname} "Miner")
-  (e/fill driver {:id :email} "steveminer@gmail.com")
-  (e/click driver {:name "btnSignUp"}))
-
-;; players should be vector of strings, each appropriate for a comment field
-;; "Steve Tucker Jeeves Lexi"
-;; The order is the same as the sign up buttons from the first page
-
-(defn sign-up [driver vplayers]
-  (e/wait-visible driver {:name "btnSignUp"})
-  (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-    (doseq [[el pls] (map vector comm-els vplayers)]
-      (e/fill-el driver el pls)))
-  (e/fill driver {:id :firstname} "Steve")
-  (e/fill driver {:id :lastname} "Miner")
-  (e/fill driver {:id :email} "steveminer@gmail.com")
-  (e/click driver {:name "btnSignUp"}))
