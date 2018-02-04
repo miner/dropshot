@@ -186,11 +186,50 @@
 ;; There are some funny transformations done to convert from HTML order of elements into
 ;; something that's easier to find the right button.
 
+;; SEM BUG:  should drop day/time with no courts
+
 (defn parse-available [driver]
   (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
         parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
     (available-by-date (patch-buttons driver (map make-day parts)))))
 
+;; UNFINISHED
+(defn parse-available-courts [driver]
+  (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))
+        parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
+    (available-by-date (patch-buttons driver (map make-day parts)))))
+
+(def sample-request
+  {:first "Steve" :last "Miner" :email "steve@indigopickleball.com"
+   :requests  [["02/05/2018" 1000 "Aaa Bbb Ccc Ddd"]
+               ["02/06/2018" 1300 "Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]]
+   })
+
+#_ (defn dropshot [url request-map]
+  (e/with-chrome {} driver
+    (let [reqs (:requests request-map)]
+
+      (e/go driver url)
+      (let [sign-up-ids (signup-button-ids driver)]
+        (if (empty? sign-up-ids)
+          ;; nothing there loop
+          nil
+          (let [available (parse-available-courts driver sign-up-ids)]
+
+))))))
+
+
+;; NOT REALLY NEEDED
+(defn extract-date [txt]
+  (when-let [sp (str/index-of txt " (")]
+    (subs txt 0 sp)))
+
+(defn just-dates [driver]
+  (let [lines (str/split-lines (e/get-element-text driver {:tag :td}))]
+    (map extract-date (filter date-line? lines))))
+
+
+  
 
 (comment
   ;; final data structure looks like this.  Key nav ["date" start :buttons court] to get
