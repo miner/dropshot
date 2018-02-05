@@ -7,15 +7,32 @@
             [etaoin.keys :as k]))
 
 
+;; SEM TODO: variable throttling based on time of day.  Every 15 sec from 4am to 10am on Thursday.
+;; Every 10 minutes otherwise.  Or give it a hot start option in the data.
+;; (.getDayOfWeek (java.time.LocalDateTime/now))
+;; #object[java.time.DayOfWeek 0x2133c523 "SUNDAY"]
+;; (str (.getDayOfWeek (java.time.LocalDateTime/now)))
+;; "SUNDAY"
+;; (.getHour (java.time.LocalDateTime/now))
+;; (.getMinute (java.time.LocalDateTime/now))
+
 (def signup-url "http://www.SignUpGenius.com/go/60B0E49A4A628A5F49-edgefield")
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
     
 
+;; timestamp string
+;; requires Java 8
+(defn now
+  ([] (let [nowstr (str (java.time.LocalDateTime/now))]
+        (str (subs nowstr 5 10) " " (subs nowstr 11 19))))
+  ([msg] (str msg " " (now))))
+
+
 (def sample-input
   {:first "Smash" :last "Banger" :email "miner@velisco.com"
-   :requests  [["02/05/2018" 1000 "Aaa Bbb Ccc Ddd"]
-               ["02/06/2018" 1300 "Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]]
+   :requests  [["02/05/2018" 1000 (now "Aaa")]
+               ["02/06/2018" 1300 (now "Bbb") (now "Ccc")]]
    })
 
 ;; :courts to be added when assigned
@@ -25,7 +42,6 @@
    {:date "02/06/2018" :start 1300 :players ["Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]
     :courts [1 2]}]
    )
-
 
 
 ;; nil if not available
@@ -252,6 +268,11 @@
 
 
 ;; SEM TODO: handle split assignments where some courts were available but not others
+;; SEM FIXME: doesn't notice that you've already signed up for another court with the same
+;; people.  Might happen if you restart with the old request.  It will take another court
+;; when it finds an opening.
+
+;; SEM: try with-headless  (for headless Chrome)
 
 (defn dropshot [url request-input timeout-hrs]
   (let [timeout (+ (System/currentTimeMillis) (* 60 60 1000 timeout-hrs))]
@@ -260,17 +281,19 @@
         (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
           (e/go driver url)
           (e/wait-visible driver {:tag :input :type :submit})
-          (Thread/sleep 500)
           (let [sign-up-ids (signup-button-ids driver)]
             (if (empty? sign-up-ids)
               ;; wait if nothing available
-              (do (println (str (java.time.LocalDateTime/now)))
+              (do (println (now))
                   (println "Waiting empty sign ups")
                   (flush)
-                  (Thread/sleep 15000)
+                  (e/wait 15)
                   (recur reqs))
               (let [available (parse-available-courts driver sign-up-ids)
                     assignments (mapv (fn [r] (assign-courts available r)) reqs)]
+
+                ;; SEM FIXME should look for partial assignments by comparing :courts to :players
+                
                 (println "** available **")
                 (pprint available)
                 (println)
@@ -283,10 +306,10 @@
                   (println "RETURN to continue")
                   (read-line))
                 (if-not (some :courts assignments)
-                  (do (println (str (java.time.LocalDateTime/now)))
+                  (do (println (now))
                       (println "Waiting no assignments")
                       (flush)
-                      (Thread/sleep 15000)
+                      (e/wait 15)
                       (recur reqs))
                   (do
                     (doseq [r assignments]
@@ -294,7 +317,6 @@
                         ;; need to double check if court was taken???
                         ;; can't tell until submission
                         (click-court driver available (:date r) (:start r) court)))
-                    (Thread/sleep 2000)
                     ;; ready, submit
                     (click-submit-and-sign-up driver)
 
@@ -307,9 +329,7 @@
                     (e/fill driver {:id :firstname} (:first request-input))
                     (e/fill driver {:id :lastname} (:last request-input))
                     (e/fill driver {:id :email} (:email request-input))
-                    (Thread/sleep 2000)
                     (e/click driver {:name "btnSignUp"})
-                    (Thread/sleep 2000)
                     (recur (remove :courts assignments))))))))))))
 
 (defn smoke []
