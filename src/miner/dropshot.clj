@@ -19,7 +19,9 @@
 (def signup-url "http://www.SignUpGenius.com/go/60B0E49A4A628A5F49-edgefield")
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
-    
+
+(def ^:dynamic *testing* true)
+
 
 ;; timestamp string
 ;; requires Java 8
@@ -27,6 +29,21 @@
   ([] (let [nowstr (str (java.time.LocalDateTime/now))]
         (str (subs nowstr 5 10) " " (subs nowstr 11 19))))
   ([msg] (str msg " " (now))))
+
+
+(defn adaptive-wait-secs []
+  (let [now (java.time.LocalDateTime/now)]
+    (if (or *testing* (and (= (.getDayOfWeek now) "THURSDAY") (<= 4 (.getHour now) 12)))
+      (+ 10 (rand-int 10))
+      (+ 600 (rand-int 100)))))
+
+(defn adaptive-wait
+  ([] (e/wait (adaptive-wait-secs)))
+  ([msg]
+   (let [secs (adaptive-wait-secs)]
+     (println (now) "Waiting" secs "secs -" msg)
+     (flush)
+     (e/wait secs))))
 
 
 (def sample-input
@@ -272,6 +289,13 @@
 ;; people.  Might happen if you restart with the old request.  It will take another court
 ;; when it finds an opening.
 
+;; SEM FIXME: should look at actual assignments and try not to sign up twice.
+;; SEM FIXME: should confirm actual assignment after it thinks it signed up.  Should recycle
+;; if it fails.  That way you don't have to anticipate failure modes.  Just look at the page
+;; again and quit only if you see the signups you wanted.
+
+
+
 ;; SEM: try with-headless  (for headless Chrome)
 
 (defn dropshot [url request-input timeout-hrs]
@@ -284,32 +308,24 @@
           (let [sign-up-ids (signup-button-ids driver)]
             (if (empty? sign-up-ids)
               ;; wait if nothing available
-              (do (println (now))
-                  (println "Waiting empty sign ups")
-                  (flush)
-                  (e/wait 15)
+              (do (adaptive-wait "empty sign ups")
                   (recur reqs))
               (let [available (parse-available-courts driver sign-up-ids)
                     assignments (mapv (fn [r] (assign-courts available r)) reqs)]
 
                 ;; SEM FIXME should look for partial assignments by comparing :courts to :players
-                
-                (println "** available **")
-                (pprint available)
-                (println)
-                (println "assignments")
-                (pprint assignments)
-                (println)
-                (flush)
-                (when (empty? available)
-                  (println "Stopping for empty available")
-                  (println "RETURN to continue")
-                  (read-line))
+
+                (when *testing*
+                  (println "** available **")
+                  (pprint available)
+                  (println)
+                  (println "assignments")
+                  (pprint assignments)
+                  (println)
+                  (flush))
+
                 (if-not (some :courts assignments)
-                  (do (println (now))
-                      (println "Waiting no assignments")
-                      (flush)
-                      (e/wait 15)
+                  (do (adaptive-wait "no assignments")
                       (recur reqs))
                   (do
                     (doseq [r assignments]
