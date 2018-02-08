@@ -20,12 +20,12 @@
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
 
-(def lisa-signup
-  {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
-   :requests [["2/21/2018" 1400 "BShaver KShaver RBromley RNelson MTewkesbury"
-               "PLeibstein DLilly MBeckner MGarcia WMarinaccio"]
-              ["2/20/2018" 1230 "LMiner SMiner SFuller JFuller"]]}  )
-
+(def sample-input
+  {:first "Banger" :last "Smash" :email "miner@velisco.com"
+   :url signup-url
+   :requests  [{:date "02/05/2018" :start 1000 :players [(now "Aaa")]}
+               {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
+   })
 
 
 (def ^:dynamic *testing* true)
@@ -53,20 +53,6 @@
      (flush)
      (e/wait secs))))
 
-
-(def sample-input
-  {:first "Smash" :last "Banger" :email "miner@velisco.com"
-   :requests  [["02/05/2018" 1000 (now "Aaa")]
-               ["02/06/2018" 1300 (now "Bbb") (now "Ccc")]]
-   })
-
-;; :courts to be added when assigned
-;; TODO: partial assignments will have to split players accordingly and report failure.
-(def sample-expanded-requests
-  [{:date "02/05/2018" :start 1000 :players ["Aaa Bbb Ccc Ddd"] :courts [4]}
-   {:date "02/06/2018" :start 1300 :players ["Aaa Bbb Ccc Ddd" "Eee Fff Ggg Hhh"]
-    :courts [1 2]}]
-   )
 
 
 ;; nil if not available
@@ -284,10 +270,6 @@
         
 
 
-(defn expand-request [input-request]
-  (let [[date start & players] input-request]
-    {:date date :start start :players players}))
-     
 ;; emergency
 (def ^:dynamic *continue* true)
 
@@ -309,18 +291,18 @@
 
 ;; SEM FIXME should combine url requests and request-input into one map
 
-(defn attempt-signup [url requests request-input]
-  ;; return updated requests
+(defn attempt-signup [request-input]
+  ;; return updated request-input (:requests)
   (e/with-chrome {} driver
-    (e/go driver url)
+    (e/go driver (:url request-input))
     (e/wait-visible driver {:tag :input :type :submit})
     (let [sign-up-ids (signup-button-ids driver)]
       (if (empty? sign-up-ids)
         ;; wait if nothing available
         (do (adaptive-wait "empty sign ups")
-            requests)
+            request-input)
         (let [available (parse-available-courts driver sign-up-ids)
-              assignments (mapv (fn [r] (assign-courts available r)) requests)]
+              assignments (mapv (fn [r] (assign-courts available r)) (:requests request-input))]
 
           ;; SEM FIXME should look for partial assignments by comparing :courts to :players
 
@@ -335,7 +317,7 @@
 
           (if-not (some :courts assignments)
             (do (adaptive-wait "no assignments")
-                requests)
+                request-input)
             (do
               (doseq [r assignments]
                 (doseq [court (:courts r)]
@@ -355,23 +337,23 @@
               (e/fill driver {:id :lastname} (:last request-input))
               (e/fill driver {:id :email} (:email request-input))
               (e/click driver {:name "btnSignUp"})
-              (remove :courts assignments))))))))
+              (assoc request-input :requests (remove :courts assignments)))))))))
 
 
 
 
 
 
-(defn dropshot [url request-input timeout-hrs]
-  (let [timeout (+ (System/currentTimeMillis) (* 60 60 1000 timeout-hrs))]
-    (loop [reqs (mapv expand-request (:requests request-input))]
-      (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
-        (recur (attempt-signup url reqs request-input))))))
+(defn dropshot [request-input]
+  (loop [request-input request-input]
+    (if (seq (:requests request-input))
+      (recur (attempt-signup request-input))
+      request-input)))
 
 
 
 (defn smoke []
-  (dropshot signup-url sample-input 1))
+  (dropshot sample-input))
 
                     
 
