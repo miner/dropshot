@@ -20,6 +20,14 @@
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
 
+(def lisa-signup
+  {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
+   :requests [["2/21/2018" 1400 "BShaver KShaver RBromley RNelson MTewkesbury"
+               "PLeibstein DLilly MBeckner MGarcia WMarinaccio"]
+              ["2/20/2018" 1230 "LMiner SMiner SFuller JFuller"]]}  )
+
+
+
 (def ^:dynamic *testing* true)
 
 
@@ -298,55 +306,69 @@
 
 ;; SEM: try with-headless  (for headless Chrome)
 
+
+;; SEM FIXME should combine url requests and request-input into one map
+
+(defn attempt-signup [url requests request-input]
+  ;; return updated requests
+  (e/with-chrome {} driver
+    (e/go driver url)
+    (e/wait-visible driver {:tag :input :type :submit})
+    (let [sign-up-ids (signup-button-ids driver)]
+      (if (empty? sign-up-ids)
+        ;; wait if nothing available
+        (do (adaptive-wait "empty sign ups")
+            requests)
+        (let [available (parse-available-courts driver sign-up-ids)
+              assignments (mapv (fn [r] (assign-courts available r)) requests)]
+
+          ;; SEM FIXME should look for partial assignments by comparing :courts to :players
+
+          (when *testing*
+            (println "** available **")
+            (pprint available)
+            (println)
+            (println "assignments")
+            (pprint assignments)
+            (println)
+            (flush))
+
+          (if-not (some :courts assignments)
+            (do (adaptive-wait "no assignments")
+                requests)
+            (do
+              (doseq [r assignments]
+                (doseq [court (:courts r)]
+                  ;; need to double check if court was taken???
+                  ;; can't tell until submission
+                  (click-court driver available (:date r) (:start r) court)))
+              ;; ready, submit
+              (click-submit-and-sign-up driver)
+
+              (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
+                                    assignments)]
+                (e/wait-visible driver {:name "btnSignUp"})
+                (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                  (doseq [[el pls] (map vector comm-els players)]
+                    (e/fill-el driver el pls))))
+              (e/fill driver {:id :firstname} (:first request-input))
+              (e/fill driver {:id :lastname} (:last request-input))
+              (e/fill driver {:id :email} (:email request-input))
+              (e/click driver {:name "btnSignUp"})
+              (remove :courts assignments))))))))
+
+
+
+
+
+
 (defn dropshot [url request-input timeout-hrs]
   (let [timeout (+ (System/currentTimeMillis) (* 60 60 1000 timeout-hrs))]
-    (e/with-chrome {} driver
-      (loop [reqs (mapv expand-request (:requests request-input))]
-        (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
-          (e/go driver url)
-          (e/wait-visible driver {:tag :input :type :submit})
-          (let [sign-up-ids (signup-button-ids driver)]
-            (if (empty? sign-up-ids)
-              ;; wait if nothing available
-              (do (adaptive-wait "empty sign ups")
-                  (recur reqs))
-              (let [available (parse-available-courts driver sign-up-ids)
-                    assignments (mapv (fn [r] (assign-courts available r)) reqs)]
+    (loop [reqs (mapv expand-request (:requests request-input))]
+      (when (and *continue* (seq reqs) (< (System/currentTimeMillis) timeout))
+        (recur (attempt-signup url reqs request-input))))))
 
-                ;; SEM FIXME should look for partial assignments by comparing :courts to :players
 
-                (when *testing*
-                  (println "** available **")
-                  (pprint available)
-                  (println)
-                  (println "assignments")
-                  (pprint assignments)
-                  (println)
-                  (flush))
-
-                (if-not (some :courts assignments)
-                  (do (adaptive-wait "no assignments")
-                      (recur reqs))
-                  (do
-                    (doseq [r assignments]
-                      (doseq [court (:courts r)]
-                        ;; need to double check if court was taken???
-                        ;; can't tell until submission
-                        (click-court driver available (:date r) (:start r) court)))
-                    ;; ready, submit
-                    (click-submit-and-sign-up driver)
-
-                    (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
-                                          assignments)]
-                      (e/wait-visible driver {:name "btnSignUp"})
-                      (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-                        (doseq [[el pls] (map vector comm-els players)]
-                          (e/fill-el driver el pls))))
-                    (e/fill driver {:id :firstname} (:first request-input))
-                    (e/fill driver {:id :lastname} (:last request-input))
-                    (e/fill driver {:id :email} (:email request-input))
-                    (e/click driver {:name "btnSignUp"})
-                    (recur (remove :courts assignments))))))))))))
 
 (defn smoke []
   (dropshot signup-url sample-input 1))
