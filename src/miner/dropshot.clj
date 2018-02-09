@@ -204,6 +204,16 @@
 (defn third [coll]
   (second (rest coll)))
 
+;; collection of keys can have duplicates, corresponding vals are conj-ed on to a vector
+;; sort of a variation on zipmap
+(defn zipconj
+  ([keys vals] (zipconj keys vals []))
+  ([keys vals empty-val]
+   (reduce (fn [res kv] (update res (first kv) (fnil conj empty-val) (second kv)))
+           {}
+           (map list keys vals))))
+
+
 (defn make-time-slot [date raw-slot]
   (let [[start end] (parse-time-line (first raw-slot))
         court-parts (slice-by court? (rest raw-slot))
@@ -214,8 +224,8 @@
      :start start
      :end end
      :courts courts
-     :taken (zipmap (map parse-court (map first taken))
-                    (map third taken))}))
+     :taken (zipconj (map third taken)
+                     (map parse-court (map first taken)))}))
     
 
 (defn make-day-slots [raw-day]
@@ -329,7 +339,7 @@
 (defn assign-courts [available requester-name req]
   (if (:assigned req)
     req
-    (if (some #{requester-name} (vals (get-in available [(:date req) (:start req) :taken])))
+    (if (get-in available [(:date req) (:start req) :taken requester-name])
       (assoc (dissoc req :courts) :assigned requester-name)
       (let [available-courts (get-in available [(:date req) (:start req) :courts])
             cnt (count (:players req))]
