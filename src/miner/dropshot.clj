@@ -16,6 +16,17 @@
 ;; (.getHour (java.time.LocalDateTime/now))
 ;; (.getMinute (java.time.LocalDateTime/now))
 
+
+
+;; timestamp string
+;; requires Java 8
+(defn now
+  ([] (let [nowstr (str (java.time.LocalDateTime/now))]
+        (str (subs nowstr 5 10) " " (subs nowstr 11 19))))
+  ([msg] (str msg " " (now))))
+
+
+
 (def signup-url "http://www.SignUpGenius.com/go/60B0E49A4A628A5F49-edgefield")
 
 (def aiken-url "http://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
@@ -29,14 +40,6 @@
 
 
 (def ^:dynamic *testing* true)
-
-
-;; timestamp string
-;; requires Java 8
-(defn now
-  ([] (let [nowstr (str (java.time.LocalDateTime/now))]
-        (str (subs nowstr 5 10) " " (subs nowstr 11 19))))
-  ([msg] (str msg " " (now))))
 
 
 (defn adaptive-wait-secs []
@@ -53,7 +56,25 @@
      (flush)
      (e/wait secs))))
 
+;; slice-by like partition-by but expects singleton items satisfying pred, then conses
+;; following items after it.  If coll doesn't start with a pred item, nil is placed in the
+;; first place to mark potential junk.
 
+(defn WAS-slice-by [pred coll]
+  (let [parts (partition-by pred coll)]
+    (map #(cons (ffirst %) (second %))
+         (partition-all 2  (if (pred (first coll)) parts (cons (list nil) parts))))))
+
+;; faster and simpler to reduce, but not lazy
+(defn slice-by [pred coll]
+  (reduce (fn [res x]
+            (if (pred x)
+              (conj res [x])
+              (if (empty? res)
+                [[nil x]]
+                (conj (pop res) (conj (peek res) x)))))
+          []
+          coll))
 
 ;; nil if not available
 (defn button-id [available date start court]
@@ -158,6 +179,15 @@
         end (parse-time (str/trim (subs dt (+ time-sep 3))))]
     [date start end]))
 
+(defn split-date-timestr [dt]
+  (let [sp (str/index-of dt " ")
+        day-end (+ (str/index-of dt ".) ") 3)
+        time-sep (str/index-of dt " - ")
+        date (subs dt 0 sp)
+        timestr (subs dt day-end)]
+    [date timestr]))
+
+
 (defn parse-time-line [txt]
   (let [[start end] (str/split txt #" [-] ")]
     [(parse-time start) (parse-time (str/trim end))]))
@@ -165,22 +195,36 @@
 (defn parse-court [txt]
   (Long/parseLong (str/trim (subs txt (.length "Court ")))))
 
-(defn make-day [[dtstrs txts]]
-  (assert (not (next dtstrs)))
-  (let [[date start end] (parse-date-time (first dtstrs))]
-    (loop [txts txts start start end end courts [] ct 0 slots []]
-      (if-let [txt (first txts)]
-        (cond (court? txt) (recur (rest txts) start end courts (long (parse-court txt)) slots)
-              (sign-up? txt) (recur (rest txts) start end (conj courts ct) 0 slots)
-              (time-line? txt) (let [[start1 end1] (parse-time-line txt)]
-                                 (recur (rest txts) start1 end1 [] 0
-                                        (conj slots {:start start :end end :courts
-                                                     courts})))
-              :else (recur (rest txts) start end courts ct slots))
 
-        ;; finished
-        {:date date
-         :slots (conj slots {:start start :end end :courts courts})}))))
+(defn third [coll]
+  (second (rest coll)))
+
+(defn make-time-slot [date raw-slot]
+  (let [[start end] (parse-time-line (first raw-slot))
+        court-parts (slice-by court? (rest raw-slot))
+        available (filter #(sign-up? (second %)) court-parts)
+        taken (remove #(sign-up? (second %)) court-parts)
+        courts (mapv parse-court (map first available))]
+    {:date date
+     :start start
+     :end end
+     :courts courts
+     :taken (zipmap (map parse-court (map first taken))
+                    (map third taken))}))
+    
+
+(defn make-day-slots [raw-day]
+  (let [[date timestr] (split-date-timestr (first raw-day))
+        raw-slots (slice-by time-line? (cons timestr (rest raw-day)))]
+    (map #(make-time-slot date %) raw-slots)))
+
+;; desired slot format
+;; {:date date :start start :end end :courts [1 2 3] :assigned {4 "somebody" 5 "other guy"}
+;;   :buttons {1 "check23" 2 "check33" 3 "check45"}
+
+
+
+
 
 (comment
   ;; temporary day structure, gets converted to "available" structure later
@@ -206,7 +250,7 @@
                     form))
                 available)))
 
-(defn available-by-date [available]
+(defn WAS-available-by-date [available]
   (reduce (fn [res day] (let [d (:date day) slots (:slots day)]
                           (assoc res d (zipmap (map :start slots)
                                                (map #(assoc % :date d) slots)))))
@@ -219,11 +263,13 @@
 ;; SEM:  could drop day/time with no courts, but that's not really necessary.  And it was
 ;; hard when I tried.
 
-;; Just for testing.  Real code can use the p-a-courts version
-(defn parse-available [driver]
-  (let [lines (str/split-lines (e/get-element-text driver {:tag :table :class "SUGtableouter"}))
-        parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
-    (available-by-date (patch-buttons driver (signup-button-ids driver) (map make-day parts)))))
+
+(defn nest-by-date-time [day-group]
+  (reduce-kv (fn [res date slots]
+               (assoc res date (zipmap (map :start slots) slots)))
+             {}
+             day-group))
+
 
 
 ;; used to get {:tag :td} but sometimes the ad goes first and screws that up.  Looks like I
@@ -232,8 +278,15 @@
 (defn parse-available-courts [driver sign-up-ids]
   (e/wait-visible driver {:tag :td})
   (let [lines (str/split-lines (e/get-element-text driver {:tag :table :class "SUGtableouter"}))
-        parts (partition 2 (rest (partition-by (complement date-line?) lines)))]
-    (available-by-date (patch-buttons driver sign-up-ids (map make-day parts)))))
+        raw-days (rest (slice-by date-line? lines))]
+    (nest-by-date-time (group-by :date (patch-buttons driver sign-up-ids
+                                                      (mapcat make-day-slots raw-days))))))
+  
+
+;; Just for testing.  Real code can use the p-a-courts version
+(defn parse-available [driver]
+  (parse-available-courts driver   (signup-button-ids driver)))
+
 
 
 
@@ -258,7 +311,7 @@
 ;; court twice if the requests overlap!!!
 
 ;; For now, we only assign
-(defn assign-courts [available req]
+(defn WAS-assign-courts [available req]
   (if (:courts req)
     req
     (let [available-courts (get-in available [(:date req) (:start req) :courts])
@@ -266,6 +319,18 @@
       (if (empty? available-courts)
         req
         (assoc req :courts (preferred-courts available-courts cnt))))))
+
+
+(defn assign-courts [available requester-name req]
+  (if (:assigned req)
+    req
+    (if (some #{requester-name} (vals (get-in available [(:date req) (:start req) :taken])))
+      (assoc (dissoc req :courts) :assigned requester-name)
+      (let [available-courts (get-in available [(:date req) (:start req) :courts])
+            cnt (count (:players req))]
+        (if (empty? available-courts)
+          req
+          (assoc req :courts (preferred-courts available-courts cnt)))))))
 
         
 
@@ -286,10 +351,15 @@
 
 
 
-;; SEM: try with-headless  (for headless Chrome)
+;; SEM: try with-chrome-headless  (for headless Chrome)
+;; Didn't work for clicks
+
+;; SEM DONE: combine url requests and request-input into one map
 
 
-;; SEM FIXME should combine url requests and request-input into one map
+;; SEM FIXME:  not sure about the final remove.  Should instead check that requests are
+;; filled by checking reserver name at slots.  Then quit when all requests have matching
+;; actual or the slots are taken by someone else.
 
 (defn attempt-signup [request-input]
   ;; return updated request-input (:requests)
@@ -302,7 +372,9 @@
         (do (adaptive-wait "empty sign ups")
             request-input)
         (let [available (parse-available-courts driver sign-up-ids)
-              assignments (mapv (fn [r] (assign-courts available r)) (:requests request-input))]
+              requester-name (str (:first request-input) " " (:last request-input))
+              assignments (mapv (fn [r] (assign-courts available requester-name r))
+                                (:requests request-input))]
 
           ;; SEM FIXME should look for partial assignments by comparing :courts to :players
 
@@ -315,40 +387,39 @@
             (println)
             (flush))
 
-          (if-not (some :courts assignments)
-            (do (adaptive-wait "no assignments")
-                request-input)
-            (do
-              (doseq [r assignments]
-                (doseq [court (:courts r)]
-                  ;; need to double check if court was taken???
-                  ;; can't tell until submission
-                  (click-court driver available (:date r) (:start r) court)))
-              ;; ready, submit
-              (click-submit-and-sign-up driver)
+          (if (every? :assigned assignments)
+            (assoc request-input :requests assignments)
+            (if-not (some :courts assignments)
+              (do (adaptive-wait "no assignments")
+                  (assoc request-input :requests assignments))
+              (do
+                (doseq [r assignments]
+                  (doseq [court (:courts r)]
+                    ;; need to double check if court was taken???
+                    ;; can't tell until submission
+                    (click-court driver available (:date r) (:start r) court)))
+                ;; ready, submit
+                (click-submit-and-sign-up driver)
 
-              (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
-                                    assignments)]
-                (e/wait-visible driver {:name "btnSignUp"})
-                (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-                  (doseq [[el pls] (map vector comm-els players)]
-                    (e/fill-el driver el pls))))
-              (e/fill driver {:id :firstname} (:first request-input))
-              (e/fill driver {:id :lastname} (:last request-input))
-              (e/fill driver {:id :email} (:email request-input))
-              (e/click driver {:name "btnSignUp"})
-              (assoc request-input :requests (remove :courts assignments)))))))))
-
-
-
+                (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
+                                      assignments)]
+                  (e/wait-visible driver {:name "btnSignUp"})
+                  (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                    (doseq [[el pls] (map vector comm-els players)]
+                      (e/fill-el driver el pls))))
+                (e/fill driver {:id :firstname} (:first request-input))
+                (e/fill driver {:id :lastname} (:last request-input))
+                (e/fill driver {:id :email} (:email request-input))
+                (e/click driver {:name "btnSignUp"})
+                (assoc request-input :requests assignments)))))))))
 
 
 
 (defn dropshot [request-input]
   (loop [request-input request-input]
-    (if (seq (:requests request-input))
-      (recur (attempt-signup request-input))
-      request-input)))
+    (if (every? :assigned (:requests request-input))
+      request-input
+      (recur (attempt-signup request-input)))))
 
 
 
