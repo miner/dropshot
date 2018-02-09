@@ -6,6 +6,11 @@
             [etaoin.api :as e]
             [etaoin.keys :as k]))
 
+;;; 02/09/18  09:45 by miner -- need to clean up old and WAS
+;; consider :taken  probably want to invert map to {NAME courts} since we only lookup name
+
+
+
 
 ;; SEM TODO: variable throttling based on time of day.  Every 15 sec from 4am to 10am on Thursday.
 ;; Every 10 minutes otherwise.  Or give it a hot start option in the data.
@@ -363,55 +368,58 @@
 
 (defn attempt-signup [request-input]
   ;; return updated request-input (:requests)
-  (e/with-chrome {} driver
-    (e/go driver (:url request-input))
-    (e/wait-visible driver {:tag :input :type :submit})
-    (let [sign-up-ids (signup-button-ids driver)]
-      (if (empty? sign-up-ids)
-        ;; wait if nothing available
-        (do (adaptive-wait "empty sign ups")
-            request-input)
-        (let [available (parse-available-courts driver sign-up-ids)
-              requester-name (str (:first request-input) " " (:last request-input))
-              assignments (mapv (fn [r] (assign-courts available requester-name r))
-                                (:requests request-input))]
+  (try
+    (e/with-chrome {} driver
+      (e/go driver (:url request-input))
+      (e/wait-visible driver {:tag :input :type :submit})
+      (let [sign-up-ids (signup-button-ids driver)]
+        (if (empty? sign-up-ids)
+          ;; wait if nothing available
+          (do (adaptive-wait "empty sign ups")
+              request-input)
+          (let [available (parse-available-courts driver sign-up-ids)
+                requester-name (str (:first request-input) " " (:last request-input))
+                assignments (mapv (fn [r] (assign-courts available requester-name r))
+                                  (:requests request-input))]
 
-          ;; SEM FIXME should look for partial assignments by comparing :courts to :players
+            ;; SEM FIXME should look for partial assignments by comparing :courts to :players
 
-          (when *testing*
-            (println "** available **")
-            (pprint available)
-            (println)
-            (println "assignments")
-            (pprint assignments)
-            (println)
-            (flush))
+            (when *testing*
+              (println (now))
+              (println "** available **")
+              (pprint available)
+              (println)
+              (println "assignments")
+              (pprint assignments)
+              (println)
+              (flush))
 
-          (if (every? :assigned assignments)
-            (assoc request-input :requests assignments)
-            (if-not (some :courts assignments)
-              (do (adaptive-wait "no assignments")
-                  (assoc request-input :requests assignments))
-              (do
-                (doseq [r assignments]
-                  (doseq [court (:courts r)]
-                    ;; need to double check if court was taken???
-                    ;; can't tell until submission
-                    (click-court driver available (:date r) (:start r) court)))
-                ;; ready, submit
-                (click-submit-and-sign-up driver)
+            (if (every? :assigned assignments)
+              (assoc request-input :requests assignments)
+              (if-not (some :courts assignments)
+                (do (adaptive-wait "no assignments")
+                    (assoc request-input :requests assignments))
+                (do
+                  (doseq [r assignments]
+                    (doseq [court (:courts r)]
+                      ;; need to double check if court was taken???
+                      ;; can't tell until submission
+                      (click-court driver available (:date r) (:start r) court)))
+                  ;; ready, submit
+                  (click-submit-and-sign-up driver)
 
-                (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
-                                      assignments)]
-                  (e/wait-visible driver {:name "btnSignUp"})
-                  (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-                    (doseq [[el pls] (map vector comm-els players)]
-                      (e/fill-el driver el pls))))
-                (e/fill driver {:id :firstname} (:first request-input))
-                (e/fill driver {:id :lastname} (:last request-input))
-                (e/fill driver {:id :email} (:email request-input))
-                (e/click driver {:name "btnSignUp"})
-                (assoc request-input :requests assignments)))))))))
+                  (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
+                                        assignments)]
+                    (e/wait-visible driver {:name "btnSignUp"})
+                    (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                      (doseq [[el pls] (map vector comm-els players)]
+                        (e/fill-el driver el pls))))
+                  (e/fill driver {:id :firstname} (:first request-input))
+                  (e/fill driver {:id :lastname} (:last request-input))
+                  (e/fill driver {:id :email} (:email request-input))
+                  (e/click driver {:name "btnSignUp"})
+                  (assoc request-input :requests assignments))))))))
+    (catch Throwable _ request-input)))
 
 
 
