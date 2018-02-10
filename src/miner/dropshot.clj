@@ -48,10 +48,11 @@
 
 
 (defn adaptive-wait-secs []
-  (let [now (java.time.LocalDateTime/now)]
-    (if (or *testing* (and (= (.getDayOfWeek now) "THURSDAY") (<= 4 (.getHour now) 12)))
+  (if (or *testing*
+          (let [now (java.time.LocalDateTime/now)]
+            (and (= (.getDayOfWeek now) "THURSDAY") (<= 4 (.getHour now) 12))))
       (+ 10 (rand-int 10))
-      (+ 600 (rand-int 100)))))
+      (+ 600 (rand-int 100))))
 
 (defn adaptive-wait
   ([] (e/wait (adaptive-wait-secs)))
@@ -204,6 +205,9 @@
 (defn third [coll]
   (second (rest coll)))
 
+(defn fourth [coll]
+  (nth coll 3 nil))
+
 ;; collection of keys can have duplicates, corresponding vals are conj-ed on to a vector
 ;; sort of a variation on zipmap
 (defn zipconj
@@ -219,13 +223,15 @@
         court-parts (slice-by court? (rest raw-slot))
         available (filter #(sign-up? (second %)) court-parts)
         taken (remove #(sign-up? (second %)) court-parts)
-        courts (mapv parse-court (map first available))]
+        courts (mapv parse-court (map first available))
+        taken-courts (map parse-court (map first taken))]
     {:date date
      :start start
      :end end
      :courts courts
+     :rosters (zipmap taken-courts (map fourth taken))
      :taken (zipconj (map third taken)
-                     (map parse-court (map first taken)))}))
+                     taken-courts)}))
     
 
 (defn make-day-slots [raw-day]
