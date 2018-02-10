@@ -66,11 +66,6 @@
 ;; following items after it.  If coll doesn't start with a pred item, nil is placed in the
 ;; first place to mark potential junk.
 
-(defn WAS-slice-by [pred coll]
-  (let [parts (partition-by pred coll)]
-    (map #(cons (ffirst %) (second %))
-         (partition-all 2  (if (pred (first coll)) parts (cons (list nil) parts))))))
-
 ;; faster and simpler to reduce, but not lazy
 (defn slice-by [pred coll]
   (reduce (fn [res x]
@@ -306,7 +301,10 @@
 
 ;; Just for testing.  Real code can use the p-a-courts version
 (defn parse-available [driver]
-  (parse-available-courts driver   (signup-button-ids driver)))
+  {:time (now)
+   :url (e/get-url driver)
+   :available  (parse-available-courts driver   (signup-button-ids driver))} )
+
 
 
 
