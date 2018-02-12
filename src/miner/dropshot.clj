@@ -12,6 +12,22 @@
 
 
 
+(defn third [coll]
+  (second (rest coll)))
+
+(defn fourth [coll]
+  (nth coll 3 nil))
+
+;; collection of keys can have duplicates, corresponding vals are conj-ed on to a vector
+;; sort of a variation on zipmap
+(defn zipconj
+  ([keys vals] (zipconj keys vals []))
+  ([keys vals empty-val]
+   (reduce (fn [res kv] (update res (first kv) (fnil conj empty-val) (second kv)))
+           {}
+           (map list keys vals))))
+
+
 ;; SEM TODO: variable throttling based on time of day.  Every 15 sec from 4am to 10am on Thursday.
 ;; Every 10 minutes otherwise.  Or give it a hot start option in the data.
 ;; (.getDayOfWeek (java.time.LocalDateTime/now))
@@ -62,7 +78,7 @@
      (flush)
      (e/wait secs))))
 
-;; slice-by like partition-by but expects singleton items satisfying pred, then conses
+;; slice-by like partition-by but expects singleton items satisfying pred, then conjoins
 ;; following items after it.  If coll doesn't start with a pred item, nil is placed in the
 ;; first place to mark potential junk.
 
@@ -197,22 +213,6 @@
   (Long/parseLong (str/trim (subs txt (.length "Court ")))))
 
 
-(defn third [coll]
-  (second (rest coll)))
-
-(defn fourth [coll]
-  (nth coll 3 nil))
-
-;; collection of keys can have duplicates, corresponding vals are conj-ed on to a vector
-;; sort of a variation on zipmap
-(defn zipconj
-  ([keys vals] (zipconj keys vals []))
-  ([keys vals empty-val]
-   (reduce (fn [res kv] (update res (first kv) (fnil conj empty-val) (second kv)))
-           {}
-           (map list keys vals))))
-
-
 (defn make-time-slot [date raw-slot]
   (let [[start end] (parse-time-line (first raw-slot))
         court-parts (slice-by court? (rest raw-slot))
@@ -302,6 +302,7 @@
 ;; Just for testing.  Real code can use the p-a-courts version
 (defn parse-available [driver]
   {:time (now)
+   :timestamp (System/getCurrentMillis)
    :url (e/get-url driver)
    :available  (parse-available-courts driver   (signup-button-ids driver))} )
 
