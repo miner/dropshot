@@ -59,6 +59,13 @@
                {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
    })
 
+(def lisa-input
+  {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
+   :url aiken-url
+   :requests  [{:date "02/05/2018" :start 1000 :players ["Aaa"]}
+               {:date "02/06/2018" :start 1300 :players ["Bbb" "Ccc"]}]
+   })
+
 
 (def ^:dynamic *testing* true)
 
@@ -339,12 +346,6 @@
         req
         (assoc req :courts (preferred-courts available-courts cnt))))))
 
-        
-
-
-;; emergency
-(def ^:dynamic *continue* true)
-
 
 ;; SEM TODO: handle split assignments where some courts were available but not others
 ;; SEM FIXME: doesn't notice that you've already signed up for another court with the same
@@ -382,13 +383,13 @@
           (let [available (parse-available-courts driver sign-up-ids)
                 requester-name (str (:first request-input) " " (:last request-input))
                 assignments (mapv (fn [r] (assign-courts available requester-name r))
-                                  (:requests request-input))]
-
+                                  (:requests request-input))
+                request-output (assoc request-input :requests assignments :available available)]
             (if (every? :assigned assignments)
-              (assoc request-input :requests assignments :available available)
+              request-output
               (if-not (some :courts assignments)
                 (do (adaptive-wait "no assignments")
-                    (assoc request-input :requests assignments :available available))
+                    request-output)
                 (do
                   (doseq [r assignments]
                     (doseq [court (:courts r)]
@@ -408,7 +409,7 @@
                   (e/fill driver {:id :lastname} (:last request-input))
                   (e/fill driver {:id :email} (:email request-input))
                   (e/click driver {:name "btnSignUp"})
-                  (assoc request-input :requests assignments :available available))))))))
+                  request-output)))))))
     (catch Throwable _ request-input)))
 
 
