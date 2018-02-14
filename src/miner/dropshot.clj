@@ -64,7 +64,7 @@
 
 
 (defn adaptive-wait-secs []
-  (if (or *testing*
+  (if (or *testing* 
           (let [now (java.time.LocalDateTime/now)]
             (and (= (.getDayOfWeek now) "THURSDAY") (<= 4 (.getHour now) 12))))
       (+ 10 (rand-int 10))
@@ -302,7 +302,7 @@
 ;; Just for testing.  Real code can use the p-a-courts version
 (defn parse-available [driver]
   {:time (now)
-   :timestamp (System/getCurrentMillis)
+   :timestamp (System/currentTimeMillis)
    :url (e/get-url driver)
    :available  (parse-available-courts driver   (signup-button-ids driver))} )
 
@@ -330,27 +330,14 @@
 ;; SEM FIXME:  we're assuming no overlap in requests.  We might be assigning the same
 ;; court twice if the requests overlap!!!
 
-;; For now, we only assign
-(defn WAS-assign-courts [available req]
-  (if (:courts req)
-    req
+(defn assign-courts [available requester-name req]
+  (if (get-in available [(:date req) (:start req) :taken requester-name])
+    (assoc (dissoc req :courts) :assigned requester-name)
     (let [available-courts (get-in available [(:date req) (:start req) :courts])
           cnt (count (:players req))]
       (if (empty? available-courts)
         req
         (assoc req :courts (preferred-courts available-courts cnt))))))
-
-
-(defn assign-courts [available requester-name req]
-  (if (:assigned req)
-    req
-    (if (get-in available [(:date req) (:start req) :taken requester-name])
-      (assoc (dissoc req :courts) :assigned requester-name)
-      (let [available-courts (get-in available [(:date req) (:start req) :courts])
-            cnt (count (:players req))]
-        (if (empty? available-courts)
-          req
-          (assoc req :courts (preferred-courts available-courts cnt)))))))
 
         
 
@@ -397,23 +384,11 @@
                 assignments (mapv (fn [r] (assign-courts available requester-name r))
                                   (:requests request-input))]
 
-            ;; SEM FIXME should look for partial assignments by comparing :courts to :players
-
-            (when *testing*
-              (println (now))
-              (println "** available **")
-              (pprint available)
-              (println)
-              (println "assignments")
-              (pprint assignments)
-              (println)
-              (flush))
-
             (if (every? :assigned assignments)
-              (assoc request-input :requests assignments)
+              (assoc request-input :requests assignments :available available)
               (if-not (some :courts assignments)
                 (do (adaptive-wait "no assignments")
-                    (assoc request-input :requests assignments))
+                    (assoc request-input :requests assignments :available available))
                 (do
                   (doseq [r assignments]
                     (doseq [court (:courts r)]
@@ -433,7 +408,7 @@
                   (e/fill driver {:id :lastname} (:last request-input))
                   (e/fill driver {:id :email} (:email request-input))
                   (e/click driver {:name "btnSignUp"})
-                  (assoc request-input :requests assignments))))))))
+                  (assoc request-input :requests assignments :available available))))))))
     (catch Throwable _ request-input)))
 
 
@@ -442,7 +417,17 @@
   (loop [request-input request-input]
     (if (every? :assigned (:requests request-input))
       request-input
-      (recur (attempt-signup request-input)))))
+      (let [again (attempt-signup request-input)]
+        (when-not (= (:available request-input) (:available again))
+          (println (now))
+          (println "** available **")
+          (pprint (:available again))
+          (println)
+          (println "requests")
+          (pprint (:requests again))
+          (println)
+          (flush))
+        (recur again)))))
 
 
 
