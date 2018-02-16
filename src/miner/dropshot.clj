@@ -62,8 +62,9 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "02/05/2018" :start 1000 :players ["Aaa"]}
-               {:date "02/06/2018" :start 1300 :players ["Bbb" "Ccc"]}]
+   :requests  [{:date "02/28/2018" :start 1400
+                :players ["WMarinaccio, KShaver, BShaver, LMiner, DLilly"
+                          "MRead, RNelson, MBeckner, RBromley, MTewkesbury"]}]
    })
 
 
@@ -370,7 +371,6 @@
 ;; actual or the slots are taken by someone else.
 
 (defn attempt-signup [request-input]
-  ;; return updated request-input (:requests)
   (try
     (e/with-chrome {} driver
       (e/go driver (:url request-input))
@@ -378,8 +378,7 @@
       (let [sign-up-ids (signup-button-ids driver)]
         (if (empty? sign-up-ids)
           ;; wait if nothing available
-          (do (adaptive-wait "empty sign ups")
-              request-input)
+          (assoc request-input :wait "empty sign ups")
           (let [available (parse-available-courts driver sign-up-ids)
                 requester-name (str (:first request-input) " " (:last request-input))
                 assignments (mapv (fn [r] (assign-courts available requester-name r))
@@ -388,9 +387,9 @@
             (if (every? :assigned assignments)
               request-output
               (if-not (some :courts assignments)
-                (do (adaptive-wait "no assignments")
-                    request-output)
+                (assoc request-output :wait "no assignments")
                 (do
+                  (println (now "Attempting assignments"))
                   (doseq [r assignments]
                     (doseq [court (:courts r)]
                       ;; need to double check if court was taken???
@@ -410,15 +409,17 @@
                   (e/fill driver {:id :email} (:email request-input))
                   (e/click driver {:name "btnSignUp"})
                   request-output)))))))
-    (catch Throwable _ request-input)))
+    (catch Throwable e (assoc  request-input :wait (str e)))))
 
 
 
 (defn dropshot [request-input]
+  (pprint request-input)
   (loop [request-input request-input]
     (if (every? :assigned (:requests request-input))
       request-input
-      (let [again (attempt-signup request-input)]
+      (let [again (attempt-signup request-input)
+            wait-msg (:wait again)]
         (when-not (= (:available request-input) (:available again))
           (println (now))
           (println "** available **")
@@ -428,12 +429,14 @@
           (pprint (:requests again))
           (println)
           (flush))
-        (recur again)))))
+        (when wait-msg
+          (adaptive-wait wait-msg))
+        (recur (dissoc again :wait))))))
 
 
 
 (defn smoke []
-  (dropshot sample-input))
+  (pprint (dropshot sample-input)))
 
                     
 
