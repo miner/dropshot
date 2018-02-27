@@ -55,16 +55,19 @@
 (def sample-input
   {:first "Banger" :last "Smash" :email "miner@velisco.com"
    :url signup-url
-   :requests  [{:date "02/05/2018" :start 1000 :players [(now "Aaa")]}
+   :requests  [{:date "03/06/2018" :start 1300 :players [(now "Aaa")]}
                {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
    })
 
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "02/28/2018" :start 1400
+   :requests  [{:date "03/06/2018" :start 1300
+                :players ["LMiner, WMarinaccio, MBeckner, MTewkesbury"]}
+
+               {:date "03/08/2018" :start 1300
                 :players ["WMarinaccio, KShaver, BShaver, LMiner, DLilly"
-                          "MRead, RNelson, MBeckner, RBromley, MTewkesbury"]}]
+                          "MRead, MBeckner, MTewkesbury, JKabel"]}]
    })
 
 
@@ -74,7 +77,7 @@
 (defn adaptive-wait-secs []
   (if (or *testing* 
           (let [now (java.time.LocalDateTime/now)]
-            (and (= (.getDayOfWeek now) "THURSDAY") (<= 4 (.getHour now) 12))))
+            (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 4 (long (.getHour now)) 12))))
       (+ 10 (rand-int 10))
       (+ 600 (rand-int 100))))
 
