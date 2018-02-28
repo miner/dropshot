@@ -111,6 +111,7 @@
   
 (defn click-court [driver available date start court]
   (when-let [bid (button-id available date start court)]
+    (e/scroll-query driver {:id bid})
     (e/click-visible driver {:id bid})
     (let [checked (e/get-element-attr driver {:id bid} :checked)]
       (cond (= checked "true") true
