@@ -55,7 +55,7 @@
 (def sample-input
   {:first "Banger" :last "Smash" :email "miner@velisco.com"
    :url signup-url
-   :requests  [{:date "03/06/2018" :start 1300 :players [(now "Aaa")]}
+   :requests  [{:date "02/28/2018" :start 2000 :players [(now "Aaa")]}
                {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
    })
 
@@ -160,7 +160,7 @@
   (str/starts-with? txt "Court "))
 
 (defn sign-up? [txt]
-  (= txt "Sign Up "))
+  (= (str/trim txt) "Sign Up"))
 
 (defn parse-time1 [txt]
   (let [colon (str/index-of txt ":")
@@ -195,26 +195,12 @@
                         (< hr 8) (* 100 (+ hr 12))
                         :else (* hr 100))))))
 
-      
-
-
-(defn parse-date-time [dt]
-  (let [sp (str/index-of dt " ")
-        day-end (+ (str/index-of dt ".) ") 3)
-        time-sep (str/index-of dt " - ")
-        date (subs dt 0 sp)
-        start (parse-time (str/trim (subs dt day-end time-sep)))
-        end (parse-time (str/trim (subs dt (+ time-sep 3))))]
-    [date start end]))
-
 (defn split-date-timestr [dt]
   (let [sp (str/index-of dt " ")
-        day-end (+ (str/index-of dt ".) ") 3)
-        time-sep (str/index-of dt " - ")
         date (subs dt 0 sp)
-        timestr (subs dt day-end)]
+        time-sep (str/index-of dt " - ")
+        timestr (str/trim (subs dt (- time-sep 7)))]
     [date timestr]))
-
 
 (defn parse-time-line [txt]
   (let [[start end] (str/split txt #" [-] ")]
@@ -412,7 +398,8 @@
                   (e/fill driver {:id :email} (:email request-input))
                   (e/click driver {:name "btnSignUp"})
                   request-output)))))))
-    (catch Throwable e (assoc  request-input :wait (str e)))))
+    (catch Throwable e (assoc  request-input
+                               :wait (ex-info "Exception" {:stacktrace (.getStackTrace e)} e)))))
 
 
 
@@ -433,6 +420,9 @@
           (println)
           (flush))
         (when wait-msg
+          (when-let [exd (ex-data wait-msg)]
+            (println "Ex-data")
+            (pprint exd))
           (adaptive-wait wait-msg))
         (recur (dissoc again :wait))))))
 
