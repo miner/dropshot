@@ -62,13 +62,15 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "03/06/2018" :start 1300
-                :players ["LMiner, WMarinaccio, MBeckner, MTewkesbury"]}
+   :requests  [{:date "03/13/2018" :start 1500
+                :players ["LMiner, MBeckner, JBeckner, SFuller"]}
 
-               {:date "03/08/2018" :start 1300
-                :players ["WMarinaccio, KShaver, BShaver, LMiner, DLilly"
-                          "MRead, MBeckner, MTewkesbury, JKabel"]}]
+               {:date "03/14/2018" :start 1400
+                :players ["KShaver, BShaver, LMiner, DLilly"
+                          "RNelson, PLeibstein, MTewkesbury, JKabel"]}]
    })
+
+
 
 
 (def ^:dynamic *testing* true)
