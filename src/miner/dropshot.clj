@@ -10,8 +10,6 @@
 ;; consider :taken  probably want to invert map to {NAME courts} since we only lookup name
 
 
-
-
 (defn third [coll]
   (second (rest coll)))
 
@@ -39,6 +37,8 @@
 
 
 
+
+
 ;; timestamp string
 ;; requires Java 8
 (defn now
@@ -55,41 +55,58 @@
 (def sample-input
   {:first "Banger" :last "Smash" :email "miner@velisco.com"
    :url signup-url
+   :wait-time 10
    :requests  [{:date "02/28/2018" :start 2000 :players [(now "Aaa")]}
                {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
    })
 
+(def sample-input2
+  {:first "Indigo" :last "Pickle" :email "indigo@indigopickleball.com"
+   :url signup-url
+   :wait-time 15
+   :requests  [{:date "02/28/2018" :start 2000 :players [(now "Indigo A")]}
+               {:date "02/06/2018" :start 1300 :players [(now "Indigo B") (now "Indigo C")]}]
+   })
+
+
+(def impossible-input
+  {:first "Banger" :last "Smash" :email "miner@velisco.com"
+   :url signup-url
+   :wait-time 10
+   :requests  [{:date "02/28/2018" :start 2000 :players [(now "Aaa")]}
+               {:date "04/28/2018" :start 2000 :players [(now "Unavailable")]}
+               {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
+   })
+
+
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "03/13/2018" :start 1500
-                :players ["LMiner, MBeckner, JBeckner, SFuller"]}
-
-               {:date "03/14/2018" :start 1400
-                :players ["KShaver, BShaver, LMiner, DLilly"
-                          "RNelson, PLeibstein, MTewkesbury, JKabel"]}]
+   :requests  [{:date "03/21/2018" :start 1400
+                :players ["KShaver, BShaver, LMiner, RNelson, MGarcia"
+                          "PLeibstein, MTewkesbury, JKabel, MRead"]}]
    })
 
 
 
 
-(def ^:dynamic *testing* true)
+
 
 
 (defn adaptive-wait-secs []
-  (if (or *testing* 
-          (let [now (java.time.LocalDateTime/now)]
-            (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 4 (long (.getHour now)) 12))))
+  (if (let [now (java.time.LocalDateTime/now)]
+        (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 4 (long (.getHour now)) 12)))
       (+ 10 (rand-int 10))
       (+ 600 (rand-int 100))))
 
 (defn adaptive-wait
   ([] (e/wait (adaptive-wait-secs)))
-  ([msg]
-   (let [secs (adaptive-wait-secs)]
-     (println (now) "Waiting" secs "secs -" msg)
+  ([msg] (adaptive-wait msg (adaptive-wait-secs)))
+  ([msg wait-secs]
+   (let [wait-secs (or wait-secs (adaptive-wait-secs))]
+     (println (now) msg "- waiting" wait-secs "secs")
      (flush)
-     (e/wait secs))))
+     (e/wait wait-secs))))
 
 ;; slice-by like partition-by but expects singleton items satisfying pred, then conjoins
 ;; following items after it.  If coll doesn't start with a pred item, nil is placed in the
@@ -363,48 +380,48 @@
 ;; actual or the slots are taken by someone else.
 
 (defn attempt-signup [request-input]
-  (try
-    (e/with-chrome {} driver
-      (e/go driver (:url request-input))
-      (e/wait-visible driver {:tag :input :type :submit})
-      (let [sign-up-ids (signup-button-ids driver)]
-        (if (empty? sign-up-ids)
-          ;; wait if nothing available
-          (assoc request-input :wait "empty sign ups")
-          (let [available (parse-available-courts driver sign-up-ids)
-                requester-name (str (:first request-input) " " (:last request-input))
-                assignments (mapv (fn [r] (assign-courts available requester-name r))
-                                  (:requests request-input))
-                request-output (assoc request-input :requests assignments :available available)]
-            (if (every? :assigned assignments)
-              request-output
-              (if-not (some :courts assignments)
-                (assoc request-output :wait "no assignments")
-                (do
-                  (println (now "Attempting assignments"))
-                  (doseq [r assignments]
-                    (doseq [court (:courts r)]
-                      ;; need to double check if court was taken???
-                      ;; can't tell until submission
-                      (click-court driver available (:date r) (:start r) court)))
-                  ;; ready, submit
-                  (click-submit-and-sign-up driver)
+  (let [request-input (assoc request-input :timestamp (now))]
+    (try
+      (e/with-chrome {} driver
+        (e/go driver (:url request-input))
+        (e/wait-visible driver {:tag :input :type :submit})
+        (let [sign-up-ids (signup-button-ids driver)]
+          (if (empty? sign-up-ids)
+            ;; wait if nothing available
+            (assoc request-input :wait "empty sign ups")
+            (let [available (parse-available-courts driver sign-up-ids)
+                  requester-name (str (:first request-input) " " (:last request-input))
+                  assignments (mapv (fn [r] (assign-courts available requester-name r))
+                                    (:requests request-input))
+                  request-output (assoc request-input :requests assignments :available available)]
+              (if (every? :assigned assignments)
+                request-output
+                (if-not (some :courts assignments)
+                  (assoc request-output :wait "no assignments")
+                  (do
+                    (println (now (str (:email request-input) " Attempting assignments")))
+                    (doseq [r assignments]
+                      (doseq [court (:courts r)]
+                        ;; need to double check if court was taken???
+                        ;; can't tell until submission
+                        (click-court driver available (:date r) (:start r) court)))
+                    ;; ready, submit
+                    (click-submit-and-sign-up driver)
 
-                  (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
-                                        assignments)]
-                    (e/wait-visible driver {:name "btnSignUp"})
-                    (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
-                      (doseq [[el pls] (map vector comm-els players)]
-                        (e/fill-el driver el pls))))
-                  (e/fill driver {:id :firstname} (:first request-input))
-                  (e/fill driver {:id :lastname} (:last request-input))
-                  (e/fill driver {:id :email} (:email request-input))
-                  (e/click driver {:name "btnSignUp"})
-                  request-output)))))))
-    (catch Throwable e (assoc  request-input
-                               :wait (ex-info "Exception" {:stacktrace (.getStackTrace e)} e)))))
-
-
+                    (let [players (mapcat (fn [r] (take (count (:courts r)) (:players r)))
+                                          assignments)]
+                      (e/wait-visible driver {:name "btnSignUp"})
+                      (let [comm-els (e/query-all driver {:tag :input :data-ng-model "i.mycomment"})]
+                        (doseq [[el pls] (map vector comm-els players)]
+                          (e/fill-el driver el pls))))
+                    (e/fill driver {:id :firstname} (:first request-input))
+                    (e/fill driver {:id :lastname} (:last request-input))
+                    (e/fill driver {:id :email} (:email request-input))
+                    (e/click driver {:name "btnSignUp"})
+                    request-output)))))))
+      (catch Throwable e (assoc  request-input
+                                 :wait (ex-info "Exception" {:stacktrace (.getStackTrace e)}
+                                                e))))))
 
 (defn dropshot [request-input]
   (pprint request-input)
@@ -426,9 +443,75 @@
           (when-let [exd (ex-data wait-msg)]
             (println "Ex-data")
             (pprint exd))
-          (adaptive-wait wait-msg))
+          (adaptive-wait wait-msg (:wait-time request-input)))
         (recur (dissoc again :wait))))))
 
+
+;; SEM FIXME -- make this an agent so you can run multiple competing ones and control from
+;; the repl
+;; create (agent ...) and (send-off ag ....)
+;; look at options for error handling and validation
+
+(defn droptest []
+  (dropshot sample-input))
+
+
+(defn one-dropshot [request-input]
+  (let [request-input (dissoc request-input :wait :finished)
+        result (attempt-signup request-input)]
+    (if (and (not (:wait result)) (every? :assigned (:requests result)))
+      (assoc result :finished true)
+      (update result :requests (fn [rs] (map #(dissoc % :courts) rs))))))
+
+
+(defn report-status [key ag old-state new-state]
+  (when-not (= (:available old-state) (:available new-state))
+    (println key (now))
+    (println "** available **")
+    (pprint (:available new-state))
+    (println)
+    (println "requests")
+    (pprint (:requests new-state))
+    (println)
+    (flush))
+  (when-let [wait-msg (:wait new-state)]
+    (when-let [exd (ex-data wait-msg)]
+      (println)
+      (println "*** Error with ex-data")
+      (pprint new-state)
+      (flush))))
+
+(defn droploop [ag]
+  (while (and @ag (not (:finished @ag)))
+    (send-off ag one-dropshot)
+    (await ag)
+    (when-let [wait-msg (:wait @ag)]
+      (when (string? wait-msg)
+        (adaptive-wait (str (:email @ag) " - " wait-msg) (:wait-time @ag)))))
+  (println "** Finished" (:email @ag))
+  (dissoc @ag :available))
+  
+
+;; SEM FIXME -- could be a bug with non-chrono order of input requests.  I think sign up
+;; comments for player names is base on chrono order, not necessarily the same as request
+;; order.  But naturally, real input is in chrono order.  Although, my test requests aren't
+;; always.
+;; Cheap fix is to make a sort ordering on requests when initializing.
+
+(defn launch-dropshot [request-input]
+  (let [request-input (update request-input :requests
+                              (fn [rs] (sort-by (juxt :date :start) rs)))]
+  (pprint request-input)
+  (let [ag (agent request-input)]
+    (add-watch ag (:email request-input) report-status)
+    (future (droploop ag))
+    ag)))
+
+(defn hack-request [ag req-input]
+  (send ag (fn [_] req-input)))
+
+(defn show [ag]
+  (pprint (dissoc @ag :available)))
 
 
 (defn smoke []
