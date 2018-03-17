@@ -82,14 +82,12 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "03/21/2018" :start 1400
-                :players ["KShaver, BShaver, LMiner, RNelson, MGarcia"
-                          "PLeibstein, MTewkesbury, JKabel, MRead"]}]
+   :requests  [{:date "03/26/2018" :start 1500
+                :players ["LMiner MTewkesbury, BShaver, MGarcia"]}
+               {:date "03/28/2018" :start 1300
+                :players ["KShaver, BShaver, LMiner, RNelson, MRead"
+                          "PLeibstein, MBeckner, RBromley, DLilly"]}]
    })
-
-
-
-
 
 
 
@@ -486,8 +484,8 @@
     (send-off ag one-dropshot)
     (await ag)
     (when-let [wait-msg (:wait @ag)]
-      (when (string? wait-msg)
-        (adaptive-wait (str (:email @ag) " - " wait-msg) (:wait-time @ag)))))
+      (let [msg (str (:email @ag) " - " (if (string? wait-msg) wait-msg "ERROR"))]
+        (adaptive-wait msg (:wait-time @ag)))))
   (println "** Finished" (:email @ag))
   (dissoc @ag :available))
   
@@ -502,7 +500,7 @@
   (let [request-input (update request-input :requests
                               (fn [rs] (sort-by (juxt :date :start) rs)))]
   (pprint request-input)
-  (let [ag (agent request-input)]
+  (let [ag (agent request-input :error-mode :continue)]
     (add-watch ag (:email request-input) report-status)
     (future (droploop ag))
     ag)))
