@@ -82,20 +82,17 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "03/26/2018" :start 1500
-                :players ["LMiner MTewkesbury, BShaver, MGarcia"]}
-               {:date "03/28/2018" :start 1300
-                :players ["KShaver, BShaver, LMiner, RNelson, MRead"
-                          "PLeibstein, MBeckner, RBromley, DLilly"]}]
+   :requests  [{:date "04/04/2018" :start 1500
+                :players ["KShaver, BShaver, LMiner, RNelson"
+                          "MGarcia, MBeckner, WMarinaccio, DLilly, MTewkesbury"]}]
    })
-
 
 
 (defn adaptive-wait-secs []
   (if (let [now (java.time.LocalDateTime/now)]
-        (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 4 (long (.getHour now)) 12)))
-      (+ 10 (rand-int 10))
-      (+ 600 (rand-int 100))))
+        (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 6 (long (.getHour now)) 12)))
+    (+ 200 (rand-int 100))
+    (+ 7000 (rand-int 100))))
 
 (defn adaptive-wait
   ([] (e/wait (adaptive-wait-secs)))
