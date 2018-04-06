@@ -6,6 +6,41 @@
             [etaoin.api :as e]
             [etaoin.keys :as k]))
 
+;;; Keys for launch-dropshot input
+;;; required -- :email, :first, :last, :url
+;;         :requests [vector of maps]
+;;; optional -- :wait secs, :launch military-time
+;;; if :wait is missing or nil, then adaptive-wait is used
+;;; if :launch is missing or nil, then lauches immediately.  Also if launch time is recent
+;;; (2 hours), then lauch immediately.
+;;;
+;;; Request map format, required keys:
+;;; :date "02/28/2018"
+;;; :start 1600
+;;; :players ["Names A B" "More C D"]
+;;; -- players are grouped into one string per court
+
+;;; Should use spec for input format.
+
+;;; Military time is encoded as an integer.  Don't use leading 0 with military time, because
+;;; that's octal notation in Java/Clojure.
+
+
+;;; UNIMPLEMENTED:
+;;; Another possible idea is to wait 5 minutes after there are available courts before you
+;;; even try to take one.  Or wait until someone else goes first.  You would have to keep
+;;; track of the new dates.  The originals are typically before any requests so take the
+;;; first :available snapshot to get a baseline (don't let :launch-time delay first
+;;; available check.  Then notice when the new stuff is available.  Then decide to wait for
+;;; another delay or wait from someone else to reserve before you grab courts.  Sounds
+;;; complicated.
+
+
+;; This task manager would be good for testing with "virtual" time.  The test can act like a
+;; lot of clock time has passed but runs much faster in virtual time.
+;; https://github.com/aphyr/tea-time
+
+
 ;;; 02/09/18  09:45 by miner -- need to clean up old and WAS
 ;; consider :taken  probably want to invert map to {NAME courts} since we only lookup name
 
@@ -56,8 +91,8 @@
   {:first "Banger" :last "Smash" :email "miner@velisco.com"
    :url signup-url
    :wait-time 10
-   :requests  [{:date "02/28/2018" :start 2000 :players [(now "Aaa")]}
-               {:date "02/06/2018" :start 1300 :players [(now "Bbb") (now "Ccc")]}]
+   :requests  [{:date "02/28/2018" :start 1600 :players [(now "Aaa")]}
+               {:date "04/04/2018" :start 1600 :players [(now "Bbb") (now "Ccc")]}]
    })
 
 (def sample-input2
@@ -82,15 +117,16 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :requests  [{:date "04/04/2018" :start 1500
-                :players ["KShaver, BShaver, LMiner, RNelson"
-                          "MGarcia, MBeckner, WMarinaccio, DLilly, MTewkesbury"]}]
+   :launch 800
+   :requests  [{:date "04/18/2018" :start 1500
+                :players ["LMiner, MBeckner, MRead, DLilly"
+                          "RBromley, RNelson, JKabel, PLeibstein"]}]
    })
 
 
 (defn adaptive-wait-secs []
   (if (let [now (java.time.LocalDateTime/now)]
-        (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 6 (long (.getHour now)) 12)))
+        (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 6 (long (.getHour now)) 15)))
     (+ 200 (rand-int 100))
     (+ 7000 (rand-int 100))))
 
@@ -476,14 +512,38 @@
       (pprint new-state)
       (flush))))
 
+(defn military-minutes [military]
+  (+ (* 60 (quot military 100)) (rem military 100)))
+
+(defn seconds-from-now [military]
+  (let [now (java.time.LocalDateTime/now)
+        nmin (+ (* (.getHour now) 60) (.getMinute now))
+        m (military-minutes military)
+        diff (- m nmin)
+        adjusted (cond (<= -120 diff 0) 0
+                       (neg? diff) (- (+ (* 24 60) m) nmin)
+                       :else diff)]
+    (if (pos? adjusted)
+      (* 60 adjusted)
+      0)))
+    
+
+(defn wait-until [hrmin]
+  (e/wait (seconds-from-now hrmin)))
+
+
 (defn droploop [ag]
+  (when-let [launch-time (:launch @ag)]
+    (println (now)  (:email @ag))
+    (println "** Waiting to launch until" launch-time)
+    (wait-until launch-time))
   (while (and @ag (not (:finished @ag)))
     (send-off ag one-dropshot)
     (await ag)
     (when-let [wait-msg (:wait @ag)]
       (let [msg (str (:email @ag) " - " (if (string? wait-msg) wait-msg "ERROR"))]
         (adaptive-wait msg (:wait-time @ag)))))
-  (println "** Finished" (:email @ag))
+  (println "** Finished" (:email @ag) (now))
   (dissoc @ag :available))
   
 
