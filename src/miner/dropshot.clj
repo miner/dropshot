@@ -118,10 +118,13 @@
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
    :launch 800
-   :requests  [{:date "04/18/2018" :start 1500
-                :players ["LMiner, MBeckner, MRead, DLilly"
-                          "RBromley, RNelson, JKabel, PLeibstein"]}]
+   :requests  [{:date "05/02/2018" :start 1300
+                :players ["KShaver BShaver MTewkesbury, MRead"
+                          "WMarinaccio, MBeckner, DLilly, RBromley"
+                          ]}]
    })
+
+
 
 
 (defn adaptive-wait-secs []
@@ -520,7 +523,7 @@
         nmin (+ (* (.getHour now) 60) (.getMinute now))
         m (military-minutes military)
         diff (- m nmin)
-        adjusted (cond (<= -120 diff 0) 0
+        adjusted (cond (<= -60 diff 0) 0
                        (neg? diff) (- (+ (* 24 60) m) nmin)
                        :else diff)]
     (if (pos? adjusted)
