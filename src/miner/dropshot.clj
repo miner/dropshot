@@ -118,9 +118,9 @@
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
    :launch 800
-   :requests  [{:date "05/02/2018" :start 1300
-                :players ["KShaver BShaver MTewkesbury, MRead"
-                          "WMarinaccio, MBeckner, DLilly, RBromley"
+   :requests  [{:date "05/16/2018" :start 1500
+                :players ["MBeckner, WMarinaccio, DLilly, LMiner, MRead"
+                          "MGarcia, ECatchings, GVance, RBromley"
                           ]}]
    })
 
@@ -130,7 +130,7 @@
 (defn adaptive-wait-secs []
   (if (let [now (java.time.LocalDateTime/now)]
         (and (= (str (.getDayOfWeek now)) "THURSDAY") (<= 6 (long (.getHour now)) 15)))
-    (+ 200 (rand-int 100))
+    (+ 100 (rand-int 50))
     (+ 7000 (rand-int 100))))
 
 (defn adaptive-wait
