@@ -117,10 +117,21 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
+   :launch 730
+   :requests  [{:date "06/13/2018" :start 1200
+                :players ["DLilly, BShaver, KShaver, LMiner"
+                          "RBromley, PLeibstein, ECatchings, SMiner"
+                          ]}]
+   })
+
+
+#_
+(def steve-input
+  {:first "Steve" :last "Miner" :email "steveminer@gmail.com"
+   :url aiken-url
    :launch 800
-   :requests  [{:date "05/16/2018" :start 1500
-                :players ["MBeckner, WMarinaccio, DLilly, LMiner, MRead"
-                          "MGarcia, ECatchings, GVance, RBromley"
+   :requests  [{:date "05/30/2018" :start 1500
+                :players ["RBromley, SMiner, JKabel, GVance"
                           ]}]
    })
 
