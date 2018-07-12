@@ -118,11 +118,17 @@
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
    :launch 730
-   :requests  [{:date "06/13/2018" :start 1200
-                :players ["DLilly, BShaver, KShaver, LMiner"
-                          "RBromley, PLeibstein, ECatchings, SMiner"
+   :requests  [{:date "07/18/2018" :start 1500
+                :players ["RBromley, ECatchings, DLilly, PLeibstein"
+                          "JKabel, GVance, MGarcia, JBeckner"
                           ]}]
    })
+
+(comment
+
+  (def lisa (launch-dropshot lisa-input))
+
+  )
 
 
 #_
