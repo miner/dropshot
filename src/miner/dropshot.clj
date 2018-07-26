@@ -118,11 +118,12 @@
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
    :launch 730
-   :requests  [{:date "07/18/2018" :start 1500
-                :players ["RBromley, ECatchings, DLilly, PLeibstein"
-                          "JKabel, GVance, MGarcia, JBeckner"
+   :requests  [{:date "08/01/2018" :start 1500
+                :players ["BShaver, KShaver, DLilly, PLeibstein, WMarinaccio, RNelson"
                           ]}]
    })
+
+
 
 (comment
 
