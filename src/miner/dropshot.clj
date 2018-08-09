@@ -118,8 +118,9 @@
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
    :launch 730
-   :requests  [{:date "08/01/2018" :start 1500
-                :players ["BShaver, KShaver, DLilly, PLeibstein, WMarinaccio, RNelson"
+   :requests  [{:date "08/15/2018" :start 1500
+                :players ["BShaver, KShaver, MBeckner, RNelson"
+                          "LMiner, ECatchings, DLilly, WMarinaccio"
                           ]}]
    })
 
@@ -587,7 +588,10 @@
   (send ag (fn [_] req-input)))
 
 (defn show [ag]
-  (pprint (dissoc @ag :available)))
+  (pprint (dissoc @ag :available))
+  (when-let [av (:available @ag)]
+    (pprint (sort av))))
+
 
 
 (defn smoke []
