@@ -117,13 +117,11 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :launch 730
-   :requests  [{:date "08/15/2018" :start 1500
-                :players ["BShaver, KShaver, MBeckner, RNelson"
-                          "LMiner, ECatchings, DLilly, WMarinaccio"
+   :launch 630
+   :requests  [{:date "08/20/2018" :start 1500
+                :players ["SMiner, LMiner, MGarcia, JKabel"
                           ]}]
    })
-
 
 
 (comment
