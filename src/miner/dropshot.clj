@@ -9,8 +9,8 @@
 ;;; Keys for launch-dropshot input
 ;;; required -- :email, :first, :last, :url
 ;;         :requests [vector of maps]
-;;; optional -- :wait secs, :launch military-time
-;;; if :wait is missing or nil, then adaptive-wait is used
+;;; optional -- :wait-time secs, :launch military-time
+;;; if :wait-time is missing or nil, then adaptive-wait is used
 ;;; if :launch is missing or nil, then lauches immediately.  Also if launch time is recent
 ;;; (2 hours), then lauch immediately.
 ;;;
@@ -117,8 +117,9 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :launch 630
-   :requests  [{:date "08/20/2018" :start 1500
+   :launch 530
+   :wait-time 5
+   :requests  [{:date "08/27/2018" :start 1530
                 :players ["SMiner, LMiner, MGarcia, JKabel"
                           ]}]
    })
