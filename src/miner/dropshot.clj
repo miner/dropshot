@@ -117,13 +117,11 @@
 (def lisa-input
   {:first "Lisa" :last "Miner" :email "lj@lisaminer.com"
    :url aiken-url
-   :launch 530
-   :wait-time 5
-   :requests  [{:date "08/27/2018" :start 1530
-                :players ["SMiner, LMiner, MGarcia, JKabel"
+   :launch 730
+   :requests  [{:date "11/09/2018" :start 1130
+                :players ["LMiner SMiner RBromley MGarcia"
                           ]}]
    })
-
 
 (comment
 
@@ -223,7 +221,7 @@
 )
 
 (defn date-line? [txt]
-  (re-matches #"\d{1,2}/\d{1,2}/20\d\d .*" txt))
+  (re-matches #"\d{1,2}/\d{1,2}/20\d\d.*" txt))
 
 (defn time-line? [txt]
   (re-matches #"\d{1,2}:\d\d[ap]m.*" txt))
@@ -296,7 +294,34 @@
      :rosters (zipmap taken-courts (map fourth taken))
      :taken (zipconj (map third taken)
                      taken-courts)}))
-    
+
+
+(comment
+  ;; Looks like format changed because only one time slot per day
+  raw-day
+  ["11/08/2018"
+  "(Thu. 11:30am - 2:00pm)"
+  "Court 1"
+  "  RD"
+  "Richard Diemar"
+  "3.5 up-level play R. Diemar, P, Deason, S ,Wolf, J. MC"
+  "Court 2"
+  "  RD"
+  "Richard Diemar"
+  "3.5 UP-LEVEL MIXED PLAY Dan,C, J.Walker,M Beckner, Nancy V"
+  "Court 3"
+  "  Sign Up "
+  "Court 4"
+  "  RL"
+  "Reserved for Lessons"
+  "Court 5"
+  "  Sign Up "
+  "Court 6"
+  "  SW"
+  "Stephanie Wolfe"
+   "PSharp, NRacki, KRoberts, SWolfe"]
+  
+)
 
 (defn make-day-slots [raw-day]
   (let [[date timestr] (split-date-timestr (first raw-day))
@@ -644,3 +669,16 @@
 )
   
       
+
+
+
+(comment
+
+  (require '[etaoin.api :as e])
+  (require '[clojure.string :as str])
+
+  (def ddd (e/chrome))
+  (e/go ddd "https://www.signupgenius.com/go/20f0a4aada929a7fa7-court")
+  (parse-available ddd)
+  
+  )
